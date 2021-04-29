@@ -172,7 +172,7 @@ void RD(int NR, int TR, int i)
 
     if(*rdCnt < NR)
     {
-        sem_wait(rdSem);
+        sem_wait(rdSem);        //possible deadlock
     }
     else if(*rdCnt == NR)
     {
