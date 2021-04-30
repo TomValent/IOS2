@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <semaphore.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
@@ -14,12 +15,14 @@
 
 #define SANTASEM "xvalen27.sem.santa"
 #define SANTA2SEM "xvalen27.sem.santa2"
+#define SANTAHELP "xvalen27.sem.santahelp"
 #define ELFSEM "xvalen27.sem.elf"
 #define ELF2SEM "xvalen27.sem.elf2"
 #define RDSEM "xvalen27.sem.rd"
 
 sem_t *santaSem = NULL;
 sem_t *santa2Sem = NULL;
+sem_t *santaHelp = NULL;
 sem_t *elfSem = NULL;
 sem_t *elf2Sem = NULL;
 sem_t *rdSem = NULL;
@@ -29,6 +32,7 @@ int *sharedCnt = 0;
 int *elfCnt = 0;
 int *rdCnt = 0;
 FILE *file;
+bool christmas = 0;
 
 int convert(char *argument)
 {
@@ -65,6 +69,10 @@ int init()
     {
         return -1;
     }
+    if ((santaHelp = sem_open(SANTAHELP, O_CREAT | O_EXCL, 0666, 0)) == SEM_FAILED)
+    {
+        return -1;
+    }
     if ((elfSem = sem_open(ELFSEM, O_CREAT | O_EXCL, 0666, 0)) == SEM_FAILED)
     {
         return -1;
@@ -77,7 +85,7 @@ int init()
     {
         return -1;
     }
-    if ((mutex = sem_open("xvalen27.sem.mutex", O_CREAT | O_EXCL, 0666, 0)) == SEM_FAILED)
+    if ((mutex = sem_open("xvalen27.sem.mutex", O_CREAT | O_EXCL, 0666, 1)) == SEM_FAILED)
     {
         return -1;
     }
@@ -88,6 +96,7 @@ void closeSems()
 {
     sem_close(santaSem);
     sem_close(santa2Sem);
+    sem_close(santaHelp);
     sem_close(elfSem);
     sem_close(elf2Sem);
     sem_close(rdSem);
@@ -95,6 +104,7 @@ void closeSems()
 
     sem_unlink(SANTASEM);
     sem_unlink(SANTA2SEM);
+    sem_unlink(SANTAHELP);
     sem_unlink(ELFSEM);
     sem_unlink(ELF2SEM);
     sem_unlink(RDSEM);
@@ -112,78 +122,116 @@ void cleanup()
 
 void santa()
 {
+    sem_wait(mutex);
     fprintf(file, "%d: Santa: going to sleep\n", ++*sharedCnt);
     fflush(file);
+    sem_post(mutex);
 
     sem_wait(santaSem);
 
+    sem_wait(mutex);
     fprintf(file, "%d: Santa: helping elves\n", ++*sharedCnt);
     fflush(file);
+    sem_post(mutex);
+    sem_wait(mutex);
     fprintf(file, "%d: Santa: going to sleep\n",++*sharedCnt);
     fflush(file);
+    sem_post(mutex);
     *elfCnt = 0;
 
     sem_wait(santa2Sem);
+    sem_wait(mutex);
     fprintf(file, "%d: Santa: closing workshop\n",++*sharedCnt);
     fflush(file);
+    sem_post(mutex);
+    sem_wait(mutex);
     fprintf(file, "%d: Santa: Christmas started\n",++*sharedCnt);
     fflush(file);
+    sem_post(mutex);
+
+    christmas = 1;
+
+    sem_post(elfSem);
+    sem_post(elfSem);
 
     exit(0);
 }
 
-void elf(int NE, int TE, int i)
+void elf(int TE, int i)
 {
+    sem_wait(mutex);
     fprintf(file, "%d: Elf %d: started\n", ++*sharedCnt, i);
     fflush(file);
+    sem_post(mutex);
 
     usleep((rand() % TE) * 1000);
 
+    sem_wait(mutex);
     fprintf(file, "%d: Elf %d: need help\n", ++*sharedCnt, i);
     fflush(file);
+    sem_post(mutex);
     *elfCnt = *elfCnt + 1;
     if(*elfCnt < 3)
     {
         sem_wait(elfSem);
     }
+    if(christmas == 1)
+    {
+        sem_wait(mutex);
+        fprintf(file, "%d: Elf %d: taking holidays\n", ++*sharedCnt, i);
+        fflush(file);
+        sem_post(mutex);
+        exit(0);
+    }
+
+    sem_post(santaSem);
     if(*elfCnt == 3)
     {
-        for(int j = 1; j <NE; j++)
+        for(int j = 1; j < 3; j++)
             sem_post(elfSem);
     }
+    sem_wait(mutex);
     fprintf(file, "%d: Elf %d: get help\n", ++*sharedCnt, i);
     fflush(file);
-    sem_post(santaSem);
+    sem_post(mutex);
+
     sem_wait(elf2Sem);
+    sem_wait(mutex);
     fprintf(file, "%d: Elf %d: taking holidays\n", ++*sharedCnt, i);
     fflush(file);
+    sem_post(mutex);
     exit(0);
-    
 }
 
 void RD(int NR, int TR, int i)
 {
+    sem_wait(mutex);
     fprintf(file, "%d: RD %d: rstarted\n", ++*sharedCnt, i);
     fflush(file);
+    sem_post(mutex);
     (*rdCnt)++;
     usleep((rand()% TR + TR)*1000);
+    sem_wait(mutex);
     fprintf(file, "%d: RD %d: return home\n", ++*sharedCnt, i);
     fflush(file);
+    sem_post(mutex);
 
     if(*rdCnt < NR)
     {
-        sem_wait(rdSem);        //possible deadlock
+        sem_wait(rdSem);
     }
-    else if(*rdCnt == NR)
-    {
-        sem_post(santa2Sem);
-        for (int j = 1; j < NR; j++)
-            sem_post(rdSem);
-        fprintf(file, "%d: RD %d: get hitched\n", ++*sharedCnt, i);
-        fflush(file);
 
-        sem_post(elf2Sem);
-    }
+    for (int j = 1; j < NR; j++)
+        sem_post(rdSem);
+    sem_post(santa2Sem);
+
+    sem_wait(mutex);
+    fprintf(file, "%d: RD %d: get hitched\n", ++*sharedCnt, i);
+    fflush(file);
+    sem_post(mutex);
+
+    sem_post(elf2Sem);
+
     exit(0);
 }
 
@@ -194,7 +242,7 @@ void createElfs(int NE, int TE)
         pid_t elfI = fork();
         if(elfI == 0)
         {
-            elf(NE, TE, i);
+            elf(TE, i);
         }
     }
     exit(0);
