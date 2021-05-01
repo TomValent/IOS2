@@ -341,5 +341,6 @@ int main(int argc, char **argv)
     }
 
     cleanup();
+    fclose(file);
     exit(0);
 }
