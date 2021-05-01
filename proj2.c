@@ -230,15 +230,19 @@ void RD(int NR, int TR, int i)
     fprintf(file, "%d: RD %d: rstarted\n", ++*sharedCnt, i);
     fflush(file);
     sem_post(mutex);
-    (*rdCnt)++;
+
+    *rdCnt = *rdCnt + 1;
     usleep((rand()% TR + TR)*1000);
+
     sem_wait(mutex);
     fprintf(file, "%d: RD %d: return home\n", ++*sharedCnt, i);
     fflush(file);
     sem_post(mutex);
 
+    fprintf(file, "\n%d\n",*rdCnt)
     if(*rdCnt < NR)
     {
+        fprintf(file, "\nhere\n");
         sem_wait(rdSem);
     }
 
