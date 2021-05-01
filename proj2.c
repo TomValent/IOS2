@@ -18,6 +18,7 @@
 #define SANTAHELP "xvalen27.sem.santahelp"
 #define ELFSEM "xvalen27.sem.elf"
 #define ELF2SEM "xvalen27.sem.elf2"
+#define ELFWAIT "xvalen27.sem.elfWait"
 #define RDSEM "xvalen27.sem.rd"
 
 sem_t *santaSem = NULL;
@@ -25,6 +26,7 @@ sem_t *santa2Sem = NULL;
 sem_t *santaHelp = NULL;
 sem_t *elfSem = NULL;
 sem_t *elf2Sem = NULL;
+sem_t *elfWait = NULL;
 sem_t *rdSem = NULL;
 sem_t *mutex = NULL;
 
@@ -81,6 +83,10 @@ int init()
     {
         return -1;
     }
+    if ((elfWait = sem_open(ELFWAIT, O_CREAT | O_EXCL, 0666, 0)) == SEM_FAILED)
+    {
+        return -1;
+    }
     if ((rdSem = sem_open(RDSEM, O_CREAT | O_EXCL, 0666, 0)) == SEM_FAILED)
     {
         return -1;
@@ -99,6 +105,7 @@ void closeSems()
     sem_close(santaHelp);
     sem_close(elfSem);
     sem_close(elf2Sem);
+    sem_close(elfWait);
     sem_close(rdSem);
     sem_close(mutex);
 
@@ -107,6 +114,7 @@ void closeSems()
     sem_unlink(SANTAHELP);
     sem_unlink(ELFSEM);
     sem_unlink(ELF2SEM);
+    sem_unlink(ELFWAIT);
     sem_unlink(RDSEM);
     sem_unlink("xvalen27.sem.mutex");
 }
@@ -133,6 +141,15 @@ void santa()
     fprintf(file, "%d: Santa: helping elves\n", ++*sharedCnt);
     fflush(file);
     sem_post(mutex);
+
+    sem_post(elfWait);
+    sem_post(elfWait);
+    sem_post(elfWait);
+
+    sem_wait(santaHelp);
+    sem_wait(santaHelp);
+    sem_wait(santaHelp);
+
     sem_wait(mutex);
     fprintf(file, "%d: Santa: going to sleep\n",++*sharedCnt);
     fflush(file);
@@ -184,16 +201,20 @@ void elf(int TE, int i)
         exit(0);
     }
 
-    sem_post(santaSem);
+    sem_post(santaSem);     //santa pomaha elfom
     if(*elfCnt == 3)
     {
         for(int j = 1; j < 3; j++)
             sem_post(elfSem);
     }
+    sem_wait(elfWait);
+
     sem_wait(mutex);
     fprintf(file, "%d: Elf %d: get help\n", ++*sharedCnt, i);
     fflush(file);
     sem_post(mutex);
+
+    sem_post(santaHelp);        //po pomoci vypise ze pomohol
 
     sem_wait(elf2Sem);
     sem_wait(mutex);
